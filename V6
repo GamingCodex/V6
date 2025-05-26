@@ -1,0 +1,286 @@
+import pygame
+import random
+import sys
+import time
+
+# Inicialización
+pygame.init()
+
+# Cargar imágenes
+icono = pygame.image.load("icono.png.jpg")
+pygame.display.set_icon(icono)
+
+# Configuración
+CELL_SIZE = 110
+COLS = 6
+ROWS = 4
+BOARD_WIDTH = CELL_SIZE * COLS
+BOARD_HEIGHT = CELL_SIZE * ROWS
+BOARD_X_OFFSET = 150
+BOARD_Y_OFFSET = 120
+SCREEN_WIDTH = BOARD_WIDTH + BOARD_X_OFFSET * 2
+SCREEN_HEIGHT = BOARD_HEIGHT + BOARD_Y_OFFSET * 2 + 140
+screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
+pygame.display.set_caption("Guilty Memories")
+
+# Cargar fondos
+background_img = pygame.image.load("background.jpg").convert()
+menu_background_img = pygame.image.load("menu.jpg").convert()
+background_img = pygame.transform.scale(background_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+menu_background_img = pygame.transform.scale(menu_background_img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+
+# Colores
+BG_COLOR = (20, 20, 20)
+BOX_COLOR = (128, 0, 128)
+GRID_COLOR = (0, 255, 128)
+BOARD_BORDER_COLOR = (255, 255, 255)
+TEXT_COLOR = (255, 255, 255)
+BUTTON_COLOR = (50, 50, 50)
+BUTTON_HOVER_COLOR = (80, 80, 80)
+GAME_OVER_COLOR = (255, 50, 50)
+BLOOD_RED = (138, 3, 3)
+
+# Tipografías
+font = pygame.font.Font("DailyMemory-EBdl.ttf", 30)
+big_font = pygame.font.Font("DailyMemory-EBdl.ttf", 80)
+small_font = pygame.font.SysFont("courier new", 20)
+
+# Tiempo total
+TOTAL_TIME = 600
+
+# Diálogos
+dialogos = [
+    ["No recuerdo nada...", "Estas piezas me resultan familiares...", "Tengo que entender qué pasa..."],
+    ["Este lugar... ya he estado aquí, ¿no?", "Mi cabeza está confundida...", "Pero no puedo detenerme."],
+    ["Un recuerdo... veo una silueta familiar.", "El dolor es intenso, pero debo recordar.", "Algo muy importante se me escapa...", "Sigo adelante, aunque duela.", "¿Por qué olvidé esto?"],
+    ["Escucho una voz... me llama por mi nombre.", "Cada pieza encaja como fragmentos de memoria.", "Me cuesta respirar al recordar...", "Pero necesito la verdad...", "No me rendiré ahora."],
+    ["Esa imagen... es mi familia. Pero está distorsionada.", "Recordar duele más de lo que pensé.", "¿Qué hice? ¿Por qué lo olvidé?", "Debo continuar... está cerca."],
+    ["Ya no estoy tan perdido...", "Cada nivel revela más de mí."],
+    ["Las piezas se sienten ligeras ahora.", "Como si aceptara lo que soy."],
+    ["Estoy cerca del final.", "No temo lo que encontraré."],
+    ["¡Dios...! Recuerdo todo ahora.", "No puedo borrar lo que hice...", "Debo vivir con esto..."],
+    ["Yo era el culpable...", "Tomé decisiones horribles...", "Este juego... esta memoria... es mi condena."]
+]
+
+max_levels = 10
+
+# Funciones
+def draw_button(text, rect, mouse_pos):
+    color = BUTTON_HOVER_COLOR if rect.collidepoint(mouse_pos) else BUTTON_COLOR
+    pygame.draw.rect(screen, color, rect)
+    pygame.draw.rect(screen, TEXT_COLOR, rect, 2)
+    label = font.render(text, True, TEXT_COLOR)
+    screen.blit(label, (rect.centerx - label.get_width() // 2, rect.centery - label.get_height() // 2))
+
+def get_grid_positions():
+    return [(BOARD_X_OFFSET + x * CELL_SIZE, BOARD_Y_OFFSET + y * CELL_SIZE)
+            for y in range(ROWS) for x in range(COLS)]
+
+def generate_starting_position():
+    margin = 10
+    min_x_left = margin
+    max_x_left = BOARD_X_OFFSET - CELL_SIZE - margin
+    min_x_right = BOARD_X_OFFSET + BOARD_WIDTH + margin
+    max_x_right = SCREEN_WIDTH - CELL_SIZE - margin
+    min_y_top = margin
+    max_y_top = BOARD_Y_OFFSET - CELL_SIZE - margin
+    min_y_bottom = BOARD_Y_OFFSET + BOARD_HEIGHT + margin
+    max_y_bottom = SCREEN_HEIGHT - CELL_SIZE - 180
+    side = random.choice(["top", "bottom", "left", "right"])
+    if side == "top":
+        x = random.randint(BOARD_X_OFFSET, BOARD_X_OFFSET + BOARD_WIDTH - CELL_SIZE)
+        y = random.randint(min_y_top, max_y_top) if max_y_top >= min_y_top else BOARD_Y_OFFSET - CELL_SIZE - margin
+    elif side == "bottom":
+        x = random.randint(BOARD_X_OFFSET, BOARD_X_OFFSET + BOARD_WIDTH - CELL_SIZE)
+        y = random.randint(min_y_bottom, max_y_bottom) if max_y_bottom >= min_y_bottom else BOARD_Y_OFFSET + BOARD_HEIGHT + margin
+    elif side == "left":
+        x = random.randint(min_x_left, max_x_left) if max_x_left >= min_x_left else margin
+        y = random.randint(BOARD_Y_OFFSET, BOARD_Y_OFFSET + BOARD_HEIGHT - CELL_SIZE)
+    else:
+        x = random.randint(min_x_right, max_x_right) if max_x_right >= min_x_right else BOARD_X_OFFSET + BOARD_WIDTH + margin
+        y = random.randint(BOARD_Y_OFFSET, BOARD_Y_OFFSET + BOARD_HEIGHT - CELL_SIZE)
+    return (x, y)
+
+def start_level():
+    grid_positions = get_grid_positions()
+    boxes = []
+    original_positions = {}
+    locked_boxes = []
+    for _ in range(len(grid_positions)):
+        pos = generate_starting_position()
+        rect = pygame.Rect(pos[0], pos[1], CELL_SIZE, CELL_SIZE)
+        boxes.append(rect)
+        original_positions[id(rect)] = pos
+    return grid_positions, boxes, original_positions, locked_boxes
+
+def snap_to_grid(rect, grid_positions, boxes, original_positions, locked_boxes):
+    x = round((rect.x - BOARD_X_OFFSET) / CELL_SIZE) * CELL_SIZE + BOARD_X_OFFSET
+    y = round((rect.y - BOARD_Y_OFFSET) / CELL_SIZE) * CELL_SIZE + BOARD_Y_OFFSET
+    snapped = (x, y)
+    if snapped in grid_positions and snapped not in [r.topleft for r in boxes if r != rect]:
+        rect.topleft = snapped
+        if rect not in locked_boxes:
+            locked_boxes.append(rect)
+    else:
+        rect.topleft = original_positions[id(rect)]
+
+# Estados
+START_MENU = "start"
+PLAYING = "playing"
+PAUSED = "paused"
+GAME_OVER = "gameover"
+state = START_MENU
+
+# Variables iniciales
+level = 1
+selected_box = None
+offset_x = 0
+offset_y = 0
+start_time = None
+game_won = False
+dialog_index = 0
+grid_positions, boxes, original_positions, locked_boxes = [], [], {}, []
+
+clock = pygame.time.Clock()
+run = True
+
+# Bucle principal
+while run:
+    clock.tick(60)
+
+    if state in [START_MENU, PAUSED]:
+        screen.blit(menu_background_img, (0, 0))
+    elif state == PLAYING:
+        screen.blit(background_img, (0, 0))
+    else:
+        screen.fill(BG_COLOR)
+
+    mouse_pos = pygame.mouse.get_pos()
+
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            run = False
+
+        if state == START_MENU:
+            play_btn = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50, 200, 60)
+            exit_btn = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 30, 200, 60)
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if play_btn.collidepoint(mouse_pos):
+                    state = PLAYING
+                    level = 1
+                    dialog_index = 0
+                    start_time = time.time()
+                    grid_positions, boxes, original_positions, locked_boxes = start_level()
+                elif exit_btn.collidepoint(mouse_pos):
+                    run = False
+
+        elif state == PAUSED:
+            cont_btn = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50, 200, 60)
+            exit_btn = pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 30, 200, 60)
+
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if cont_btn.collidepoint(mouse_pos):
+                    state = PLAYING
+                elif exit_btn.collidepoint(mouse_pos):
+                    state = START_MENU
+
+        elif state == PLAYING:
+            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                state = PAUSED
+
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                dialog_rect = pygame.Rect(0, SCREEN_HEIGHT - 120, SCREEN_WIDTH, 120)
+                if dialog_rect.collidepoint(mouse_pos):
+                    dialog_index += 1
+                    if level - 1 < len(dialogos):
+                        if dialog_index >= len(dialogos[level - 1]):
+                            dialog_index = len(dialogos[level - 1]) - 1
+                    else:
+                        dialog_index = 0
+                else:
+                    for rect in boxes:
+                        if rect.collidepoint(mouse_pos) and rect not in locked_boxes:
+                            selected_box = rect
+                            offset_x = rect.x - mouse_pos[0]
+                            offset_y = rect.y - mouse_pos[1]
+                            break
+
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if selected_box:
+                    snap_to_grid(selected_box, grid_positions, boxes, original_positions, locked_boxes)
+                    selected_box = None
+
+            elif event.type == pygame.MOUSEMOTION and selected_box:
+                selected_box.x = mouse_pos[0] + offset_x
+                selected_box.y = mouse_pos[1] + offset_y
+
+    if state == START_MENU:
+        title = big_font.render("Guilty Memories", True, BLOOD_RED)
+        screen.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 160))
+        draw_button("Jugar", pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50, 200, 60), mouse_pos)
+        draw_button("Salir", pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 30, 200, 60), mouse_pos)
+
+    elif state == PAUSED:
+        pause_text = big_font.render("Pausa", True, TEXT_COLOR)
+        screen.blit(pause_text, (SCREEN_WIDTH // 2 - pause_text.get_width() // 2, 140))
+        draw_button("Continuar", pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 50, 200, 60), mouse_pos)
+        draw_button("Salir", pygame.Rect(SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 30, 200, 60), mouse_pos)
+
+    elif state == PLAYING:
+        current_time = time.time()
+        elapsed = current_time - start_time
+        remaining_time = max(0, int(TOTAL_TIME - elapsed))
+
+        timer_text = small_font.render(f"Tiempo: {remaining_time // 60:02}:{remaining_time % 60:02}", True, TEXT_COLOR)
+        screen.blit(timer_text, (20, 20))
+
+        level_text = small_font.render(f"Nivel {level}", True, TEXT_COLOR)
+        screen.blit(level_text, (SCREEN_WIDTH - 140, 20))
+
+        pygame.draw.rect(screen, BOARD_BORDER_COLOR, (BOARD_X_OFFSET, BOARD_Y_OFFSET, BOARD_WIDTH, BOARD_HEIGHT), 4)
+        for pos in grid_positions:
+            pygame.draw.rect(screen, GRID_COLOR, pygame.Rect(pos[0], pos[1], CELL_SIZE, CELL_SIZE), 2)
+
+        for rect in boxes:
+            pygame.draw.rect(screen, BOX_COLOR, rect)
+            pygame.draw.rect(screen, GRID_COLOR, rect, 2)
+
+        if remaining_time == 0:
+            state = GAME_OVER
+            game_won = False
+
+        if len(locked_boxes) == len(grid_positions):
+            if level < max_levels:
+                level += 1
+                dialog_index = 0
+                start_time = time.time()
+                grid_positions, boxes, original_positions, locked_boxes = start_level()
+            else:
+                state = GAME_OVER
+                game_won = True
+
+        dialog_rect = pygame.Rect(0, SCREEN_HEIGHT - 120, SCREEN_WIDTH, 120)
+        pygame.draw.rect(screen, (30, 30, 30), dialog_rect)
+        pygame.draw.rect(screen, (255, 255, 255), dialog_rect, 2)
+
+        if 1 <= level <= len(dialogos):
+            dialog_text = small_font.render(dialogos[level - 1][dialog_index], True, (255, 255, 255))
+        else:
+            dialog_text = small_font.render("Sin diálogos disponibles para este nivel.", True, (255, 255, 255))
+        screen.blit(dialog_text, (30, SCREEN_HEIGHT - 100))
+
+    elif state == GAME_OVER:
+        msg = "¡Has completado todos los niveles!" if game_won else "¡Tiempo agotado!"
+        end_text = big_font.render(msg, True, GAME_OVER_COLOR)
+        sub_text = font.render("Presiona ESC para volver al menú", True, TEXT_COLOR)
+        screen.blit(end_text, (SCREEN_WIDTH // 2 - end_text.get_width() // 2, SCREEN_HEIGHT // 2 - 60))
+        screen.blit(sub_text, (SCREEN_WIDTH // 2 - sub_text.get_width() // 2, SCREEN_HEIGHT // 2 + 10))
+
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_ESCAPE]:
+            state = START_MENU
+
+    pygame.display.flip()
+
+pygame.quit()
